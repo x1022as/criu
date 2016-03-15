@@ -19,6 +19,7 @@
 #include <sys/shm.h>
 #include <sys/mount.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
 
 #include <sched.h>
 
@@ -76,6 +77,8 @@
 #include "seccomp.h"
 #include "bitmap.h"
 #include "fault-injection.h"
+#include "uffd.h"
+
 #include "parasite-syscall.h"
 
 #include "protobuf.h"
@@ -415,6 +418,7 @@ static int restore_priv_vma_content(void)
 	unsigned int nr_shared = 0;
 	unsigned int nr_droped = 0;
 	unsigned int nr_compared = 0;
+	unsigned int nr_lazy = 0;
 	unsigned long va;
 	struct page_read pr;
 
@@ -468,6 +472,17 @@ static int restore_priv_vma_content(void)
 			off = (va - vma->e->start) / PAGE_SIZE;
 			p = decode_pointer((off) * PAGE_SIZE +
 					vma->premmaped_addr);
+
+			/*
+			 * This means that userfaultfd is used to load the pages
+			 * on demand.
+			 */
+			if (opts.lazy_pages && vma_entry_can_be_lazy(vma->e)) {
+				pr_debug("Lazy restore skips %lx\n", vma->e->start);
+				pr.skip_pages(&pr, PAGE_SIZE);
+				nr_lazy++;
+				continue;
+			}
 
 			set_bit(off, vma->page_bitmap);
 			if (vma->ppage_bitmap) { /* inherited vma */
@@ -557,6 +572,7 @@ err_read:
 	pr_info("nr_restored_pages: %d\n", nr_restored);
 	pr_info("nr_shared_pages:   %d\n", nr_shared);
 	pr_info("nr_droped_pages:   %d\n", nr_droped);
+	pr_info("nr_lazy:           %d\n", nr_lazy);
 
 	return 0;
 
@@ -3231,6 +3247,11 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 
 	strncpy(task_args->comm, core->tc->comm, sizeof(task_args->comm));
 
+	if (!opts.lazy_pages)
+		task_args->uffd = -1;
+	else
+		if (setup_uffd(task_args, pid) != 0)
+			goto err;
 
 	/*
 	 * Fill up per-thread data.
