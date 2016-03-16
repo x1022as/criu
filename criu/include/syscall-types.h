@@ -71,6 +71,8 @@ struct itimerspec;
 
 #define CLONE_ALLNS	(CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWIPC | CLONE_NEWUTS | CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWCGROUP)
 
+#define UNSHARE_MOUNT_PROC	0x1
+
 struct rlimit;
 struct rlimit64;
 
