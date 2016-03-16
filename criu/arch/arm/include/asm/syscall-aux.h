@@ -1,4 +1,6 @@
-#define __NR_mmap2 192
+#ifndef __NR_mmap2
+# define __NR_mmap2 192
+#endif
 
 #define __ARM_NR_BASE                   0x0f0000
 #define __ARM_NR_breakpoint             (__ARM_NR_BASE+1)
