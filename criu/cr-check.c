@@ -21,6 +21,7 @@
 #include <sys/prctl.h>
 #include <sched.h>
 #include <linux/aio_abi.h>
+#include <sys/mount.h>
 
 #include "proc_parse.h"
 #include "sockets.h"
@@ -820,6 +821,84 @@ static int check_clone_parent_vs_pid()
 	return 0;
 }
 
+static int check_autofs_pipe_ino(void)
+{
+	FILE *f;
+	char str[1024];
+	int ret = -ENOENT;
+
+	f = fopen_proc(PROC_SELF, "mountinfo");
+	if (!f) {
+		pr_perror("Can't open %d mountinfo", getpid());
+		return -1;
+	}
+
+	while (fgets(str, sizeof(str), f)) {
+		if (strstr(str, " autofs ")) {
+			if (strstr(str, "pipe_ino="))
+				ret = 0;
+			else {
+				pr_err("autofs not supported.\n");
+				ret = -ENOTSUP;
+			}
+			break;
+		}
+	}
+
+	fclose(f);
+	return ret;
+}
+
+static int check_autofs(void)
+{
+	char *dir, *options, template[] = "/tmp/.criu.mnt.XXXXXX";
+	int ret, pfd[2];
+
+	ret = check_autofs_pipe_ino();
+	if (ret != -ENOENT)
+		return ret;
+
+	if (pipe(pfd) < 0) {
+		pr_perror("failed to create pipe");
+		return -1;
+	}
+
+	ret = -1;
+
+	options = xsprintf("fd=%d,pgrp=%d,minproto=5,maxproto=5,direct",
+				pfd[1], getpgrp());
+	if (!options) {
+		pr_err("failed to allocate autofs options\n");
+		goto close_pipe;
+	}
+
+	dir = mkdtemp(template);
+	if (!dir) {
+		pr_perror("failed to construct temporary name\n");
+		goto free_options;
+	}
+
+	if (mount("criu", dir, "autofs", 0, options) < 0) {
+		pr_perror("failed to mount autofs");
+		goto unlink_dir;
+	}
+
+	ret = check_autofs_pipe_ino();
+
+	if (umount(dir))
+		pr_perror("failed to umount %s\n", dir);
+
+unlink_dir:
+	if (rmdir(dir))
+		pr_perror("failed to unlink %s", dir);
+free_options:
+	free(options);
+close_pipe:
+	close(pfd[0]);
+	close(pfd[1]);
+	return ret;
+}
+
 static int check_cgroupns(void)
 {
 	int ret;
@@ -894,6 +973,7 @@ int cr_check(void)
 	ret |= check_fdinfo_lock();
 	ret |= check_clone_parent_vs_pid();
 	ret |= check_cgroupns();
+	ret |= check_autofs();
 
 out:
 	if (!ret)
@@ -968,6 +1048,8 @@ int check_add_feature(char *feat)
 		chk_feature = check_loginuid;
 	else if (!strcmp(feat, "cgroupns"))
 		chk_feature = check_cgroupns;
+	else if (!strcmp(feat, "autofs"))
+		chk_feature = check_autofs;
 	else {
 		pr_err("Unknown feature %s\n", feat);
 		return -1;
