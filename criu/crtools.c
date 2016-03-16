@@ -322,6 +322,9 @@ int main(int argc, char *argv[], char *envp[])
 #ifdef CONFIG_HAS_UFFD
 		{ "lazy-pages",			no_argument,		0, 1076 },
 #endif
+		{ "extra",			no_argument,		0, 1077	},
+		{ "experimental",		no_argument,		0, 1078	},
+		{ "all",			no_argument,		0, 1079	},
 		{ },
 	};
 
@@ -502,8 +505,8 @@ int main(int argc, char *argv[], char *envp[])
 			opts.force_irmap = true;
 			break;
 		case 1054:
-			opts.check_ms_kernel = true;
-			break;
+			pr_err("--ms is deprecated; see \"Check options\" of criu --help\n");
+			return 1;
 		case 'L':
 			opts.libdir = optarg;
 			break;
@@ -537,8 +540,11 @@ int main(int argc, char *argv[], char *envp[])
 				return 1;
 			break;
 		case 1063:
-			if (check_add_feature(optarg) < 0)
+			ret = check_add_feature(optarg);
+			if (ret < 0)	/* invalid kernel feature name */
 				return 1;
+			if (ret > 0)	/* list kernel features and exit */
+				return 0;
 			break;
 		case 1064:
 			if (!add_skip_mount(optarg))
@@ -609,6 +615,16 @@ int main(int argc, char *argv[], char *envp[])
 				pr_err("Unsupported empty namespace: %s", optarg);
 				return 1;
 			}
+			break;
+		case 1077:
+			opts.check_extra_features = true;
+			break;
+		case 1078:
+			opts.check_experimental_features = true;
+			break;
+		case 1079:
+			opts.check_extra_features = true;
+			opts.check_experimental_features = true;
 			break;
 		case 'V':
 			pr_msg("Version: %s\n", CRIU_VERSION);
@@ -774,7 +790,7 @@ usage:
 "Usage:\n"
 "  criu dump|pre-dump -t PID [<options>]\n"
 "  criu restore [<options>]\n"
-"  criu check [--ms]\n"
+"  criu check [--feature FEAT]\n"
 "  criu exec -p PID <syscall-string>\n"
 "  criu page-server\n"
 "  criu service [<options>]\n"
@@ -877,8 +893,19 @@ usage:
 "                            socket[inode]\n"
 "                            file[mnt_id:inode]\n"
 "  --empty-ns {net}\n"
-"			Create a namespace, but don't restore its properies.\n"
-"			An user will retore them from action scripts.\n"
+"                        Create a namespace, but don't restore its properies.\n"
+"                        An user will retore them from action scripts.\n"
+"Check options:\n"
+"  without any arguments, \"criu check\" checks availability of absolutely required\n"
+"  kernel features; if any of these features is missing dump and restore will fail\n"
+"  --extra               also check availability of extra kernel features\n"
+"  --experimental        also check availability of experimental kernel features\n"
+"  --all                 also check availability of extra and experimental kernel features\n"
+"  --feature FEAT        only check availability of one of the following kernel features\n"
+"                        "
+	);
+	check_add_feature("list");
+	pr_msg(
 "\n"
 "* Logging:\n"
 "  -o|--log-file FILE    log file name\n"
@@ -906,7 +933,6 @@ usage:
 "Other options:\n"
 "  -h|--help             show this text\n"
 "  -V|--version          show version\n"
-"     --ms               don't check not yet merged kernel features\n"
 	);
 
 	return 0;
