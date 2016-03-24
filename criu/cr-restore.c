@@ -271,8 +271,6 @@ static int root_prepare_shared(void)
 	if (ret < 0)
 		goto err;
 
-	mark_pipe_master();
-
 	ret = tty_setup_slavery();
 	if (ret)
 		goto err;
