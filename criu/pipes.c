@@ -406,7 +406,7 @@ int collect_one_pipe_ops(void *o, ProtobufCMessage *base, struct file_desc_ops *
 	return 0;
 }
 
-static int collect_one_pipe(void *o, ProtobufCMessage *base)
+static int collect_one_pipe(void *o, ProtobufCMessage *base, struct cr_img *i)
 {
 	return collect_one_pipe_ops(o, base, &pipe_desc_ops);
 }
