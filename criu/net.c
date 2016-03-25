@@ -1095,7 +1095,8 @@ int prepare_net_ns(int pid)
 	int ret = 0;
 	NetnsEntry *netns = NULL;
 
-	if (!(opts.empty_ns & CLONE_NEWNET)) {
+	if (!(opts.empty_ns & CLONE_NEWNET) &&
+			!(join_ns_flags & CLONE_NEWNET)) {
 		ret = restore_netns_conf(pid, &netns);
 		if (!ret)
 			ret = restore_links(pid, &netns);
