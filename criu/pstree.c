@@ -443,6 +443,29 @@ static struct pid *pstree_pid_by_virt(pid_t pid)
 	return NULL;
 }
 
+static int read_pstree_ids(struct pstree_item *pi)
+{
+	int ret;
+	struct cr_img *img;
+
+	img = open_image(CR_FD_IDS, O_RSTR, pi->pid.virt);
+	if (!img)
+		return -1;
+
+	ret = pb_read_one_eof(img, &pi->ids, PB_IDS);
+	close_image(img);
+
+	if (ret <= 0)
+		return ret;
+
+	if (pi->ids->has_mnt_ns_id) {
+		if (rst_add_ns_id(pi->ids->mnt_ns_id, pi, &mnt_ns_desc))
+			return -1;
+	}
+
+	return 0;
+}
+
 static int read_pstree_image(void)
 {
 	int ret = 0, i;
@@ -550,25 +573,9 @@ static int read_pstree_image(void)
 
 		pstree_entry__free_unpacked(e, NULL);
 
-		{
-			struct cr_img *img;
-
-			img = open_image(CR_FD_IDS, O_RSTR, pi->pid.virt);
-			if (!img)
-				goto err;
-			ret = pb_read_one_eof(img, &pi->ids, PB_IDS);
-			close_image(img);
-		}
-
-		if (ret == 0)
-			continue;
+		ret = read_pstree_ids(pi);
 		if (ret < 0)
 			goto err;
-
-		if (pi->ids->has_mnt_ns_id) {
-			if (rst_add_ns_id(pi->ids->mnt_ns_id, pi, &mnt_ns_desc))
-				goto err;
-		}
 	}
 
 err:
